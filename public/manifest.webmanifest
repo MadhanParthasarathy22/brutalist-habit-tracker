@@ -1,12 +1,12 @@
 {
-  "name": "Habit Tracker",
-  "short_name": "Habit",
-  "description": "A simple vertical heatmap habit tracker with offline support.",
+  "name": "Brutalist Habit Tracker",
+  "short_name": "Habit Tracker",
+  "description": "A minimalist habit tracking PWA with quantile-based visualization.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#191919",
+  "theme_color": "#191919",
   "icons": [
     {
       "src": "/icons/icon-192.png",

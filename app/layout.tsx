@@ -21,8 +21,8 @@ export default function RootLayout({
       <head>
         {/* PWA: Manifest and theme colors */}
         <link rel="manifest" href="/manifest.webmanifest" />
-        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#191919" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#191919" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body suppressHydrationWarning className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
