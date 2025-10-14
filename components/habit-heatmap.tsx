@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
+import { getHabitName, saveHabitName } from "@/lib/storage"
 
 export type EntriesMap = Record<string, number>
-type Props = {
+interface Props {
   entries: EntriesMap
-  onSelectDate: (dateStr: string) => void
+  onChangeEntry: (dateStr: string, value: number | null) => void
 }
 
 function formatDateLocal(d: Date) {
@@ -32,7 +33,37 @@ function addDays(d: Date, n: number) {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-export default function HabitHeatmap({ entries, onSelectDate }: Props) {
+export default function HabitHeatmap({ entries, onChangeEntry }: Props) {
+  const [habitName, setHabitName] = useState("habitName")
+  const [isClient, setIsClient] = useState(false)
+  const [invalidKey, setInvalidKey] = useState<string | null>(null)
+  const [focusedKey, setFocusedKey] = useState<string | null>(null)
+  
+  // Debounced save function for habit name
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  const debouncedSaveHabitName = useCallback((name: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveHabitName(name)
+    }, 300) // 300ms debounce
+  }, [])
+
+  useEffect(() => {
+    setIsClient(true)
+    setHabitName(getHabitName())
+  }, [])
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
   // Prepare weeks from Jan 1st of the current year up to today (inclusive)
   const weeks = useMemo(() => {
     const today = new Date()
@@ -115,7 +146,7 @@ export default function HabitHeatmap({ entries, onSelectDate }: Props) {
     }
   }
 
-  // Compute quantile cutpoints (q20,q40,q60,q80) from non-zero values only
+  // Compute quantile cutpoints (q20,q40,q60,q80) from non-zero values only - optimized memoization
   const quantiles = useMemo(() => {
     const values = Object.values(entries).filter((v) => typeof v === "number" && v > 0)
     if (values.length === 0) return null
@@ -138,7 +169,7 @@ export default function HabitHeatmap({ entries, onSelectDate }: Props) {
     const min = sorted[0]
     const max = sorted[sorted.length - 1]
     return { q20, q40, q60, q80, min, max }
-  }, [entries])
+  }, [Object.keys(entries).length, Object.values(entries).reduce((sum, v) => sum + (v || 0), 0)])
 
   function bandForValue(v: number | undefined): 0 | 1 | 2 | 3 | 4 | 5 {
     // 0 = blank (no color). 1..5 = color bands
@@ -163,6 +194,72 @@ export default function HabitHeatmap({ entries, onSelectDate }: Props) {
     return "bg-[#fdfdfd]"
   }
 
+  function formatISO(date: Date) {
+    return formatDateLocal(date)
+  }
+
+  // Optimized neighbor key lookup with caching
+  const neighborKeyCache = useRef<Map<string, string>>(new Map())
+  
+  const neighborKey = useCallback((currentISO: string, deltaDays: number): string => {
+    const cacheKey = `${currentISO}:${deltaDays}`
+    if (neighborKeyCache.current.has(cacheKey)) {
+      return neighborKeyCache.current.get(cacheKey)!
+    }
+    
+    const d = new Date(currentISO)
+    d.setDate(d.getDate() + deltaDays)
+    const result = formatISO(d)
+    
+    // Cache result (limit cache size to prevent memory leaks)
+    if (neighborKeyCache.current.size > 1000) {
+      neighborKeyCache.current.clear()
+    }
+    neighborKeyCache.current.set(cacheKey, result)
+    
+    return result
+  }, [])
+
+  function commitValue(dateKey: string, raw: string) {
+    const trimmed = raw.trim()
+    if (trimmed === "") {
+      onChangeEntry(dateKey, null)
+      return
+    }
+    const n = Number(trimmed)
+    if (!Number.isFinite(n) || n < 0) return
+    onChangeEntry(dateKey, n)
+  }
+
+  function formatDateLabel(date: Date): string {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    
+    const checkDate = new Date(date)
+    checkDate.setHours(0, 0, 0, 0)
+    
+    if (checkDate.getTime() === today.getTime()) {
+      return "today"
+    }
+    if (checkDate.getTime() === yesterday.getTime()) {
+      return "yesterday"
+    }
+    
+    // Use formatDatePretty logic
+    const day = checkDate.getDate()
+    const month = checkDate.toLocaleString(undefined, { month: "long" }).toLowerCase()
+    const suffix = (n: number) => {
+      const j = n % 10, k = n % 100
+      if (j === 1 && k !== 11) return "st"
+      if (j === 2 && k !== 12) return "nd"
+      if (j === 3 && k !== 13) return "rd"
+      return "th"
+    }
+    return `${day}${suffix(day)} ${month}`
+  }
+
   const todayStart = useMemo(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -179,17 +276,17 @@ export default function HabitHeatmap({ entries, onSelectDate }: Props) {
   return (
     <div id="heatmap-root">
       {/* Day labels */}
-      <div className="hidden" />
+      <div id="heatmap-day-labels" className="hidden" />
 
       <div
         id="heatmap-scroll"
         ref={containerRef}
-        className="h-auto w-full overflow-x-hidden overflow-y-visible rounded-none border-0 bg-transparent p-1"
+        className="h-auto w-full overflow-x-visible overflow-y-visible rounded-none border-0 bg-transparent"
         aria-label="Habit heatmap"
         onScroll={handleScroll}
       >
         {/* Sticky loading marker at the very top */}
-        <div className="sticky top-0 z-10 flex h-6 items-center justify-center text-xs text-muted-foreground">
+        <div id="heatmap-loading-marker" className="sticky top-0 z-10 flex h-6 items-center justify-center text-xs text-muted-foreground">
           {loading ? "Loading…" : " "}
         </div>
 
@@ -205,27 +302,163 @@ export default function HabitHeatmap({ entries, onSelectDate }: Props) {
               const isFuture = date > todayStart
               const isBeforeYearStart = date < yearStart
               return (
-                <button
+                <div
                   key={key}
                   id={`heatmap-day-${key}`}
-                  title={`${key}${score !== undefined ? ` • score ${score}` : ""}`}
-                  aria-label={`Set score for ${key}`}
+                  title={`${key}${score !== undefined ? ` • ${score}` : ""}`}
+                  aria-label={`Edit value for ${key}`}
                   className={[
-                    "w-full aspect-square rounded-none transition-opacity box-border",
-                    classForBand(band),
-                    "hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative w-full aspect-square rounded-none transition-opacity box-border group",
+                    invalidKey === key ? "bg-[#4E1511]" : classForBand(band),
                     isFuture || isBeforeYearStart ? "opacity-0 pointer-events-none" : "",
                   ].join(" ")}
-                  onClick={() => !(isFuture || isBeforeYearStart) && onSelectDate(key)}
-                />
+                  onMouseDown={(e) => {
+                    const input = e.currentTarget.querySelector('input') as HTMLInputElement | null
+                    if (input) {
+                      e.preventDefault()
+                      input.focus()
+                    }
+                  }}
+                >
+                  {/* Date tooltip above tile */}
+                  <div id={`heatmap-tooltip-${key}`} className="pointer-events-none absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block">
+                    <div id={`heatmap-tooltip-content-${key}`} className="relative bg-[#191919] text-white font-mono text-[14px] px-2 py-1 whitespace-nowrap rounded-none">
+                      {formatDateLabel(date)}
+                      {/* Arrow pointing down */}
+                      <div id={`heatmap-tooltip-arrow-${key}`} className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-[#191919]"></div>
+                    </div>
+                  </div>
+
+                  {/* Subtle darken on hover */}
+                  <div id={`heatmap-hover-overlay-${key}`} className="pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity group-hover:opacity-10" />
+
+                  {/* Hover overlay showing value (non-editing) */}
+                  <span
+                    id={`heatmap-value-overlay-${key}`}
+                    className={[
+                      "pointer-events-none absolute inset-0 hidden items-center justify-center text-[14px] font-mono text-white mix-blend-exclusion",
+                      focusedKey === key ? "" : "group-hover:flex",
+                    ].join(" ")}
+                  >
+                    {score !== undefined && score > 0 ? String(score) : "0"}
+                  </span>
+
+                  {/* Centered input; hidden until focus-within */}
+                  <input
+                    id={`heatmap-input-${key}`}
+                    aria-label={`Value for ${key}`}
+                    inputMode="decimal"
+                    className="absolute inset-0 m-0 w-full select-all appearance-none rounded-none bg-transparent px-0 text-center font-mono text-[14px] text-white mix-blend-exclusion outline-none opacity-0 focus:opacity-100"
+                    defaultValue={score === undefined ? "" : String(score)}
+                    onFocus={(e) => {
+                      const el = e.currentTarget
+                      if (el.value === "") el.value = "0"
+                      el.select()
+                      setFocusedKey(key)
+                    }}
+                    onChange={(e) => {
+                      const val = e.currentTarget.value.trim()
+                      if (val === "") {
+                        setInvalidKey(null)
+                        return
+                      }
+                      const n = Number(val)
+                      if (!Number.isFinite(n) || n < 0) setInvalidKey(key)
+                      else setInvalidKey(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        if (invalidKey !== key) {
+                          commitValue(key, (e.target as HTMLInputElement).value)
+                          ;(e.target as HTMLInputElement).blur()
+                        }
+                      } else if (e.key === "Escape") {
+                        e.preventDefault()
+                        ;(e.target as HTMLInputElement).value = score === undefined ? "" : String(score)
+                        ;(e.target as HTMLInputElement).blur()
+                      } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+                        e.preventDefault()
+                        
+                        let nextKey: string
+                        switch (e.key) {
+                          case "ArrowLeft": nextKey = neighborKey(key, -1); break
+                          case "ArrowRight": nextKey = neighborKey(key, 1); break
+                          case "ArrowUp": nextKey = neighborKey(key, -7); break
+                          case "ArrowDown": nextKey = neighborKey(key, 7); break
+                          default: return
+                        }
+                        
+                        // Use requestAnimationFrame to avoid blocking the UI thread
+                        requestAnimationFrame(() => {
+                          const next = document.getElementById(`heatmap-day-${nextKey}`)?.querySelector('input') as HTMLInputElement | null
+                          next?.focus()
+                        })
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const target = e.currentTarget
+                      if (invalidKey === key) {
+                        // re-focus safely if still in the document
+                        requestAnimationFrame(() => {
+                          if (document.contains(target)) target.focus()
+                        })
+                        return
+                      }
+                      setFocusedKey((prev) => (prev === key ? null : prev))
+                      commitValue(key, target.value)
+                    }}
+                  />
+                </div>
               )
             }),
           )}
         </div>
 
-        {/* Bottom spacer so last row isn't flush */}
-        <div className="h-1" />
       </div>
+
+      {/* 3px white separator line */}
+      <div id="heatmap-separator-line" className="h-[3px] bg-white" style={{ width: '100%' }} />
+
+      {/* Editable habit name */}
+      <div id="habit-name-container" className="mt-2 text-center">
+        {isClient ? (
+          <input
+            id="habit-name-input"
+            value={habitName}
+            onChange={(e) => {
+              const newValue = e.target.value
+              setHabitName(newValue)
+              debouncedSaveHabitName(newValue)
+            }}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                e.currentTarget.blur()
+              } else if (e.key === "Escape") {
+                e.preventDefault()
+                setHabitName(getHabitName())
+                e.currentTarget.blur()
+              }
+            }}
+            onBlur={() => {
+              // Force immediate save on blur
+              if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current)
+              }
+              saveHabitName(habitName)
+            }}
+            className="bg-transparent text-white font-mono text-[14px] text-center outline-none cursor-pointer hover:bg-white/10 transition-colors px-2 py-1 rounded-none"
+            placeholder="habitName"
+          />
+        ) : (
+          <div id="habit-name-placeholder" className="bg-transparent text-white font-mono text-[14px] text-center px-2 py-1">
+            habitName
+          </div>
+        )}
+      </div>
+
       <p id="heatmap-sr-helper" className="hidden" />
     </div>
   )
