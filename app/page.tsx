@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils"
 import PWALoader from "@/components/pwa-register"
 import HabitHeatmap from "@/components/habit-heatmap"
 import StatsCards from "@/components/stats-cards"
-import { loadEntries, saveEntries, type EntriesMap } from "@/lib/storage"
+import ColorPicker from "@/components/color-picker"
+import DataManagement from "@/components/data-management"
+import { loadEntries, saveEntries, getColorScheme, saveColorScheme, getHabitName, type EntriesMap } from "@/lib/storage"
+import { getColorScheme as getSchemeConfig, type ColorSchemeId } from "@/lib/color-schemes"
 
 function formatDateLocal(d: Date) {
   const y = d.getFullYear()
@@ -31,11 +34,26 @@ function formatDatePretty(isoDate: string) {
 
 export default function Page() {
   const [entries, setEntries] = useState<EntriesMap>({})
+  const [colorScheme, setColorScheme] = useState<ColorSchemeId>("white")
+  const [habitName, setHabitName] = useState("habitName")
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // load from localStorage on mount
   useEffect(() => {
     setEntries(loadEntries())
+    setHabitName(getHabitName())
+    const savedScheme = getColorScheme() as ColorSchemeId
+    if (savedScheme) {
+      setColorScheme(savedScheme)
+    }
   }, [])
+
+  const handleColorSchemeChange = (scheme: ColorSchemeId) => {
+    setColorScheme(scheme)
+    saveColorScheme(scheme)
+  }
+
+  const currentScheme = useMemo(() => getSchemeConfig(colorScheme), [colorScheme])
 
   // on first load, scroll viewport to the bottom so content starts at the bottom
   useEffect(() => {
@@ -127,14 +145,35 @@ export default function Page() {
   }, [entries])
 
   return (
-    <main id="app-root" className="min-h-dvh flex flex-col justify-end px-4 py-6 md:px-8">
+    <main id="app-root" className="min-h-dvh flex flex-col justify-end px-4 pt-[10px] pb-6 md:px-8">
       {/* Register the service worker for PWA */}
       <PWALoader />
 
       <header id="app-header" className="mb-6"></header>
 
+      {/* Data management section above color picker */}
+      <section id="data-management-section" className="max-w-[400px] w-full mx-auto mb-2">
+        <DataManagement 
+          entries={entries}
+          colorScheme={colorScheme}
+          onEntriesChange={(newEntries) => {
+            setEntries(newEntries)
+          }}
+          onColorSchemeChange={handleColorSchemeChange}
+          onHabitNameChange={(name) => {
+            setHabitName(name)
+            setRefreshKey((prev) => prev + 1)
+          }}
+        />
+      </section>
+
+      {/* Color picker at the very top */}
+      <section id="color-picker-section" className="max-w-[400px] w-full mx-auto">
+        <ColorPicker selectedScheme={colorScheme} onSchemeChange={handleColorSchemeChange} />
+      </section>
+
       <section id="heatmap-section" className="max-w-[400px] w-full mx-auto">
-        <HabitHeatmap entries={entries} onChangeEntry={handleChangeEntry} />
+        <HabitHeatmap key={refreshKey} entries={entries} onChangeEntry={handleChangeEntry} colorScheme={colorScheme} />
       </section>
 
       {/* Add the stats row to the bottom and display in a single row */}
@@ -144,6 +183,8 @@ export default function Page() {
           longestStreak={longestStreak}
           totalEntries={totalEntries}
           averageScore={averageScore}
+          primaryColor={currentScheme.primary}
+          secondaryColor={currentScheme.secondary}
         />
       </section>
     </main>
