@@ -507,9 +507,9 @@ export default function HabitHeatmap({ entries, onChangeEntry, colorScheme }: Pr
             <div 
               className="absolute top-0 pointer-events-none grid grid-cols-1 gap-0 content-end z-20"
               style={{
-                // Position offset to the left of the grid
+                // Position offset to the left of the grid, closer to the grid
                 width: 'calc(100% / 7)',
-                left: 'calc(-100% / 7)'
+                left: 'calc(-100% / 7 + 8px)'
               }}
             >
               {visibleWeeksSlice.map((weekDays, relativeIndex) => {
