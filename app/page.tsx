@@ -172,7 +172,7 @@ export default function Page() {
         <ColorPicker selectedScheme={colorScheme} onSchemeChange={handleColorSchemeChange} />
       </section>
 
-      <section id="heatmap-section" className="max-w-[400px] w-full mx-auto">
+      <section id="heatmap-section" className="max-w-[400px] w-full mx-auto px-6 md:px-0">
         <HabitHeatmap key={refreshKey} entries={entries} onChangeEntry={handleChangeEntry} colorScheme={colorScheme} />
       </section>
 
