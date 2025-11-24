@@ -524,7 +524,7 @@ export default function HabitHeatmap({ entries, onChangeEntry, colorScheme }: Pr
                       backgroundColor: 'transparent',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'flex-start'
                     }}
                   >
                     {monthLabel && (
@@ -533,7 +533,8 @@ export default function HabitHeatmap({ entries, onChangeEntry, colorScheme }: Pr
                         style={{
                           opacity: 1,
                           zIndex: 21,
-                          color: scheme.secondary
+                          color: scheme.secondary,
+                          paddingLeft: '4px'
                         }}
                       >
                         {monthLabel}
