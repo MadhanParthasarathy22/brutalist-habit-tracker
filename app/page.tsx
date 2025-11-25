@@ -177,7 +177,7 @@ export default function Page() {
       </section>
 
       {/* Add the stats row to the bottom and display in a single row */}
-      <section id="stats-section" className="mt-12">
+      <section id="stats-section" className="max-w-[400px] w-full mx-auto px-6 md:px-0 mt-12">
         <StatsCards
           currentStreak={currentStreak}
           longestStreak={longestStreak}

@@ -17,7 +17,7 @@ export default function StatsCards({ currentStreak, longestStreak, totalEntries,
   }
 
   return (
-    <div id="stats-cards" className="max-w-[400px] w-full mx-auto font-mono">
+    <div id="stats-cards" className="font-mono">
       <div id="stats-grid" className="grid grid-cols-2 items-baseline gap-y-1 text-[14px]">
         <div id="stat-current-streak-label" className="tracking-wide" style={{ color: secondaryColor }}>current streak</div>
         <div id="stat-current-streak-value" className="text-right font-medium tabular-nums" style={{ color: primaryColor }}>{currentStreak}</div>
